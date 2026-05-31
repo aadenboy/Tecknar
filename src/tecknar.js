@@ -580,8 +580,11 @@ class Tecknar { // means "drawing" in Swedish :P
         e.preventDefault();
         return;
       }
-      if (this.brush.shiftHeld) this.viewportPosition[0] += e.deltaY / this.viewportZoom;
-      else this.viewportPosition[1] += e.deltaY / this.viewportZoom;
+      if (this.brush.shiftHeld) this.viewportPosition[0] += e.deltaY / this.viewportZoom; // so despite the below case, shift + scroll on a mouse does not in fact change deltaX. even though a trackpad does. fucking whatever man
+      else {
+        this.viewportPosition[0] += e.deltaX / this.viewportZoom;
+        this.viewportPosition[1] += e.deltaY / this.viewportZoom;
+      }
       this.repositionCanvas();
       e.preventDefault();
     });
