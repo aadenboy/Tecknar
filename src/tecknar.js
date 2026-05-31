@@ -587,7 +587,7 @@ class Tecknar { // means "drawing" in Swedish :P
     });
     this.viewportCanvas.addEventListener("contextmenu", (e) => e.preventDefault());
     document.addEventListener("beforeunload", (e) => {
-      if (this.undoPointer != this.undoStack.length - 1) e.preventDefault();
+      if (this.undoStack.length != 0) e.preventDefault();
     });
   }
   // or just use the container directly
