@@ -580,8 +580,11 @@ class Tecknar { // means "drawing" in Swedish :P
         e.preventDefault();
         return;
       }
-      if (this.brush.shiftHeld) this.viewportPosition[0] += e.deltaY / this.viewportZoom; // so despite the below case, shift + scroll on a mouse does not in fact change deltaX. even though a trackpad does. fucking whatever man
-      else {
+      if (this.brush.shiftHeld) {
+        this.viewportPosition[0] += e.deltaY / this.viewportZoom; // so despite the below case, shift + scroll on a mouse does not in fact change deltaX. even though a trackpad does. fucking whatever man
+        this.viewportPosition[0] += e.deltaX / this.viewportZoom; // AND THEN IT TURNS OUT SHIFT + SCROLL *DOES* CHANGE DELTAX WITH A MOUSE. BUT NOT ON A CHROMEBOOK!!!!! NOT ON A CHROMEBOOK!!!! KILL!!!!!!!!
+        // hey man why do they both update the x axis Because consistency isn't real fuck you
+      } else {
         this.viewportPosition[0] += e.deltaX / this.viewportZoom;
         this.viewportPosition[1] += e.deltaY / this.viewportZoom;
       }
@@ -589,8 +592,9 @@ class Tecknar { // means "drawing" in Swedish :P
       e.preventDefault();
     });
     this.viewportCanvas.addEventListener("contextmenu", (e) => e.preventDefault());
-    document.addEventListener("beforeunload", (e) => {
-      if (this.undoStack.length != 0) e.preventDefault();
+    window.addEventListener("beforeunload", (e) => {
+      e.preventDefault();
+      event.returnValue = true;
     });
   }
   // or just use the container directly
