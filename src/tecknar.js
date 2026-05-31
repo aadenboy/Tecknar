@@ -507,16 +507,8 @@ class Tecknar { // means "drawing" in Swedish :P
         link.download = name + format;
         link.href = "data:application/json," + encodeURIComponent(JSON.stringify(object));
       } else {
-        const prevp = this.viewportPosition;
-        const prevz = this.viewportZoom;
-        this.viewportPosition = [0, 0];
-        this.viewportZoom = 1;
-        this.repositionCanvas();
         link.download = name + format;
-        link.href = this.viewportCanvas.toDataURL("image/" + format.slice(1));
-        this.viewportPosition = prevp;
-        this.viewportZoom = prevz;
-        this.repositionCanvas();
+        link.href = this.canvas.toDataURL("image/" + format.slice(1));
       }
       link.click();
       this.saveModal.close();
@@ -562,9 +554,23 @@ class Tecknar { // means "drawing" in Swedish :P
     this.container.addEventListener("keydown", (e) => this.keyDown(e));
     this.container.addEventListener("keyup", (e) => this.keyUp(e));
 
-    this.viewportCanvas.addEventListener("pointerdown", (e) => this.startStroke(e.offsetX, e.offsetY));
-    this.viewportCanvas.addEventListener("pointermove", (e) => this.continueStroke(e.offsetX, e.offsetY));
-    document.addEventListener("pointerup", () => this.endStroke());
+    this.viewportCanvas.addEventListener("pointerdown", (e) => {
+      if (e.button == 0) this.startStroke(e.offsetX, e.offsetY);
+      if (e.button == 1) [this.dragStart, this.vpStart] = [[e.offsetX, e.offsetY], [...this.viewportPosition]];
+      this.brush.button = e.button;
+    });
+    this.viewportCanvas.addEventListener("pointermove", (e) => {
+      if (this.brush.button == 0) this.continueStroke(e.offsetX, e.offsetY);
+      if (this.brush.button == 1) {
+        this.viewportPosition[0] = this.vpStart[0] - (e.offsetX - this.dragStart[0]) / this.viewportZoom;
+        this.viewportPosition[1] = this.vpStart[1] - (e.offsetY - this.dragStart[1]) / this.viewportZoom;
+        this.repositionCanvas();
+      }
+    });
+    document.addEventListener("pointerup", () => {
+      this.brush.button = null;
+      this.endStroke()
+    });
     this.viewportCanvas.addEventListener("pointerenter", (e) => this.continueStroke(e.offsetX, e.offsetY));
     this.viewportCanvas.addEventListener("pointerleave", (e) => this.continueStroke(e.offsetX, e.offsetY));
     this.viewportCanvas.addEventListener("wheel", (e) => {
@@ -574,35 +580,14 @@ class Tecknar { // means "drawing" in Swedish :P
         e.preventDefault();
         return;
       }
-      this.viewportPosition[0] += e.deltaX / this.viewportZoom;
-      this.viewportPosition[1] += e.deltaY / this.viewportZoom;
+      if (this.brush.shiftHeld) this.viewportPosition[0] += e.deltaY / this.viewportZoom;
+      else this.viewportPosition[1] += e.deltaY / this.viewportZoom;
       this.repositionCanvas();
       e.preventDefault();
     });
     this.viewportCanvas.addEventListener("contextmenu", (e) => e.preventDefault());
-    this.viewportCanvas.addEventListener("touchstart", (e) => {
-      if (e.touches.length < 2) return;
-      this.cancelStroke();
-      e.preventDefault();
-      this.dragStart = [0, 0];
-      for (let touch in e.touches) {
-        this.dragStart[0] += touch.clientX;
-        this.dragStart[1] += touch.clientY;
-      }
-      this.dragStart[0] /= e.touches.length;
-    });
-    this.viewportCanvas.addEventListener("touchmove", (e) => {
-      if (e.touches.length < 2) return;
-      e.preventDefault();
-      let dragEnd = [0, 0];
-      for (let touch in e.touches) {
-        dragEnd[0] += touch.clientX;
-        dragEnd[1] += touch.clientY;
-      }
-      dragEnd[0] /= e.touches.length;
-      this.viewportPosition[0] += (dragEnd[0] - this.dragStart[0]) * this.viewportZoom / (this.canvasScale.value / 100);
-      this.viewportPosition[1] += (dragEnd[1] - this.dragStart[1]) * this.viewportZoom / (this.canvasScale.value / 100);
-      this.repositionCanvas();
+    document.addEventListener("beforeunload", (e) => {
+      if (this.undoPointer != this.undoStack.length - 1) e.preventDefault();
     });
   }
   // or just use the container directly
@@ -1016,11 +1001,11 @@ class Tecknar { // means "drawing" in Swedish :P
   }
   // returns the active layer
   getLayer(index) {
-    index ??= this.layerPointer;
-    if (this.layerPointer < 0 || this.layerPointer >= this.layers.length) {
+    if (index == null && (this.layerPointer < 0 || this.layerPointer >= this.layers.length)) {
       this.layerPointer = 0;
       this.refreshLayerbar();
     }
+    index ??= this.layerPointer;
     const layer = this.layers[index];
     if (layer.type != "group") return {layer, group: [layer]};
     const forward = layer.type == "group"
@@ -1448,22 +1433,24 @@ class Tecknar { // means "drawing" in Swedish :P
   endStroke() {
     if (!this.brush.isDrawing) return;
     this.brush.isDrawing = false;
-    const {layer} = this.getLayer();
+    const index = this.layerPointer;
+    let {layer} = this.getLayer();
     if (layer.type == "group") return;
     const stroke = layer.strokes.pop();
     if (this.brush.type == "pen" && stroke.points.length == 1) stroke.points[1] = [...stroke.points[0]];
     if (this.brush.type == "pen") stroke.points = this.#DouglasPeucker(stroke.points);
-    let initial = true;
     this.state(
       () => {
+        ({layer} = this.getLayer(index)); // so ugly wrapping this in parentheses
         layer.strokes.pop();
         layer.cache = null;
         this.redraw();
       },
       () => {
+        ({layer} = this.getLayer(index));
         layer.strokes.push(stroke);
-        if (initial) {
-          this.drawStroke(stroke);
+        this.drawStroke(stroke);
+        if (layer.cache) {
           layer.cacheCtx.globalAlpha = stroke.opacity;
           layer.cacheCtx.globalCompositeOperation = stroke.erase ? "destination-out" : "source-over";
           layer.cacheCtx.drawImage(this.opacityCanvas, 0, 0);
@@ -1471,7 +1458,6 @@ class Tecknar { // means "drawing" in Swedish :P
           layer.workingCtx.globalCompositeOperation = "source-over";
           layer.workingCtx.clearRect(0, 0, this.canvas.width, this.canvas.height);
           layer.workingCtx.drawImage(layer.cache, 0, 0);
-          initial = false;
         }
         this.redraw();
       }
