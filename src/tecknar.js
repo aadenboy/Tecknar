@@ -370,7 +370,11 @@ class Tecknar { // means "drawing" in Swedish :P
     this.layerName.classList.add("tecknar-layer-name");
     this.layerName.placeholder = "Layer #";
     this.layerName.maxLength = 255;
-    this.layerName.addEventListener("input", () => this.setLayerValue("name", this.layerName.value));
+    this.layerName.addEventListener("input", () => {
+      const [start, end] = [this.layerName.selectionStart, this.layerName.selectionEnd];
+      this.setLayerValue("name", this.layerName.value)
+      this.layerName.setSelectionRange(start, end);
+    });
     this.layerOpacity = this.#quickInput("number", "layer-opacity", 100, false, "Opacity", true);
     this.layerOpacity.classList.add("tecknar-layer-opacity");
     this.layerOpacity.min = 0;
@@ -507,8 +511,15 @@ class Tecknar { // means "drawing" in Swedish :P
         link.download = name + format;
         link.href = "data:application/json," + encodeURIComponent(JSON.stringify(object));
       } else {
+        const [prevp, prevz] = [this.viewportPosition, this.viewportZoom];
+        this.viewportPosition = [0, 0];
+        this.viewportZoom = 1;
+        this.repositionCanvas();
         link.download = name + format;
         link.href = this.viewportCanvas.toDataURL("image/" + format.slice(1));
+        this.viewportPosition = prevp;
+        this.viewportZoom = prevz;
+        this.repositionCanvas();
       }
       link.click();
       this.saveModal.close();
